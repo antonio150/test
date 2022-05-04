@@ -1,0 +1,2480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Projet RO MiniLi</title>
+	<link rel="stylesheet" type="text/css" href="bootstrap/css/bootstrap.min.css"/>
+	<style>
+		table {
+			border-collapse: collapse;
+			text-align: center;
+		}
+		th, td {
+			border: 1px solid black;
+			padding: 2.5px;
+		}
+		.cost, .blank {
+			width: 100px;
+		}
+		.blank {
+			border-bottom: 0;
+		}
+		.x {
+			border-top: 0;
+			height: 25px;
+		}
+		.supply, .demand {
+			width: 100px;
+		}
+		.hidden1 {
+			display: none;
+		}
+		.line-through {
+			text-decoration: line-through;
+		}
+		.yellow {
+			background-color: yellow;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="row">
+			<div class="col-md-6">
+				<h2>Initialisation de MiniLi</h2>
+				
+				<table class="table table-striped table-bordered" cellspacing="0" width="100%">
+					<tr>
+						<td>Disponible</td>
+						<td>Demande</td>
+					</tr>
+					<tr>
+						<td><input class="form-control form-control-sm" type="number" min="0" name="jml-supply" id="jml-supply" placeholder="Quantite dispo"></td>
+						<td><input class="form-control form-control-sm" type="number" min="0" name="jml-demand" id="jml-demand" placeholder="Quantite demande"></td>
+					</tr>
+					<tr>
+						<td colspan="3"><button type="button" id="init" class="btn btn-success">Creation de table</button></td>
+					</tr>
+				</table>
+			</div>
+			<div class="col-md-6">
+				<div class="hidden1" id="tbl-nwc-container">
+					<h2>Mnimum Ligne</h2>
+					<table class="table table-striped table-bordered" cellspacing="0" width="100%">
+						<tbody id="tbl-nwc"></tbody>
+						<tfoot>
+							<tr>
+								<td id="buttons">
+									<button type="button" id="next" class="btn btn-primary">Traiter</button> <button type="button" id="stepping-stone" class="hidden1 btn btn-danger">Stepping Stone</button>
+								</td>
+							</tr>
+						</tfoot>
+					</table>
+				</div>
+
+			</div>
+		</div>
+	
+		<div class="hidden1 alert alert-success" id="hasil-nwc"></div>
+	
+	
+		<div class="hidden1 alert alert-danger" id="hasil-ss"></div>
+		
+</div>
+	<script src="jquery-3.2.1.min.js"></script>
+	<script>
+		var step = 0,
+			steppingStone = 0,
+			supply = [], 
+			demand = [], 
+			data = [], 
+			jmlSupply, 
+			jmlDemand, 
+			stepRow = 0,
+			stepCol = 0,
+			total, 
+			sisa;
+		$(document).ready(function() {
+			// inisialisasi tabel
+			$('#init').click(function(event) {
+				event.preventDefault();
+
+				step = 0;
+				steppingStone = 0;
+				supply = [];
+				demand = []; 
+				data = [];
+				stepRow = 0;
+				stepCol = 0;
+				total = 0;
+				sisa = 0;
+
+				$('#stepping-stone, #hasil-nwc, #hasil-ss').fadeOut(500);
+				$('#next').html('Calculer').fadeIn(500);
+
+				jmlSupply = parseInt($('#jml-supply').val());
+				jmlDemand = parseInt($('#jml-demand').val());
+
+				var tbl = '<tr>'+
+					'<th>&nbsp;</th>';
+				for (var i = 1; i <= parseInt($('#jml-demand').val()); i++) {
+					tbl += '<th colspan="2">N-'+i+'</th>';
+				}	
+				tbl += '<th>Source</th>'+
+					'</tr>';
+				for (var i = 1; i <= parseInt($('#jml-supply').val()); i++) {
+					tbl += '<tr>'+
+						'<th rowspan="2">Quantite-'+i+'</th>';
+					for (var j = 1; j <= parseInt($('#jml-demand').val()); j++) {
+						tbl += '<td class="blank" id="blank-'+i+'-'+j+'">&nbsp;</td>'+
+							'<td><input type="number" min="0" class="cost form-control form-control-sm" name="cost" data-asal="'+i+'" data-tujuan="'+j+'"></td>';
+					}
+					tbl += '<td rowspan="2"><input type="number" min="0" name="supply" class="supply form-control form-control-sm" data-asal="'+i+'"></td>'+
+						'</tr>'+
+						'<tr>';
+					for (var j = 1; j <= parseInt($('#jml-demand').val()); j++) {
+						tbl += '<td colspan="2" class="x" id="x-'+i+'-'+j+'" data-asal="'+i+'" data-tujuan="'+j+'">&nbsp;</td>';
+					}
+					tbl += '</tr>';
+				}
+				tbl += '<tr>'+
+					'<th>Demand</th>';
+				var col = 1;
+				for (var i = 1; i <= parseInt($('#jml-demand').val()); i++) {
+					col+=2;
+					tbl += '<td colspan="2"><input type="number" min="0" class="demand form-control form-control-sm" name="demand" data-tujuan="'+i+'"></td>';
+				}	
+				tbl += '<td>&nbsp;</td>'+
+					'</tr>';
+				col++;
+
+				$('#buttons').attr('colspan', col);
+				$('#tbl-nwc').html(tbl);
+				$('#tbl-nwc-container').slideDown(500);
+
+			});
+
+			// calcul MiniLi
+			$('#next').click(function(event) {
+				event.preventDefault();
+				$('.x, .blank').removeClass('yellow');
+				
+				// si l'etape est toujours 0
+				if(step == 0){
+					supply = [];
+					demand = [];
+					data = [];
+
+					var totalSupply = 0, totalDemand = 0;
+
+					$('.supply').each(function(index, el) {
+						supply.push({
+							asal: $(el).data('asal'),
+							nilai: parseInt($(el).val()),
+							sisa: parseInt($(el).val())
+						});
+
+						totalSupply += parseInt($(el).val());
+					});
+
+					$('.demand').each(function(index, el) {
+						demand.push({
+							tujuan: $(el).data('tujuan'),
+							nilai: parseInt($(el).val()),
+							sisa: parseInt($(el).val())
+						});
+
+						totalDemand += parseInt($(el).val());
+					});
+
+					if(totalSupply != totalDemand) {
+						alert('la somme quantité dispo different de somme demandee  !');
+					}
+					else {
+						total = totalSupply;
+						sisa = totalSupply;
+
+						$('.cost').each(function(index, el) {
+							if($(el).val() == '') {
+								alert("Remplissez tous les champ svp !");
+								return false;
+							}
+							else {
+								var asal = $(el).data('asal');
+								var tujuan = $(el).data('tujuan');
+
+								var row = asal-1;
+								var col = tujuan-1;
+
+								if(typeof data[row] === 'undefined') {
+									data[row] = [];
+								}
+								data[row][col] = {
+									asal: asal,
+									tujuan: tujuan,
+									cost: parseInt($(el).val()),
+									x: 0,
+									temp: 0,
+									delta: 0,
+									negative: 0,
+									stop: 0,
+									resultat: 0,
+								};
+							}
+						});
+						$('.supply, .demand, .cost').attr('disabled', true);
+						$('#next').html('Next');
+					}
+
+					step++;
+					// console.log('supply', supply);
+					// console.log('demand', demand);
+					// console.log('data', data);
+				}
+				// si le calcul commence
+
+
+// =============================================================================================================================================
+// =============================================================================================================================================
+// ======================================== DEBUT DE MINILI ========================================================================
+// =============================================================================================================================================
+
+
+				else {
+					// si la variable residuelle !=0 alors continuer le calcul
+					if(sisa != 0) {
+						// cette boucle de rupture pour qu'ell puisse etre affichée étape par etape
+						var breakLoop = false;var i = stepRow;
+						// console.log('step', step);
+						// console.log('supply', supply);
+						// console.log('demand', demand);
+						// console.log('data', data);
+						step++;
+						while ( i < jmlSupply) {
+							var j=0;
+							var Min=[]; var Min2 = []; 
+								var vj = j;
+								var minPlus=[]; var repete = false;  var indexesOf12 = []; // the number whose occurrence in the array we want to find
+								var indexesOfValue = [];
+									var Minim, min0=0;var val = 0;var valy=0 ; var minTab=0;
+							while (j<jmlDemand){
+								
+								
+									if(Min.length === 0){
+										for(var v = 0; v < jmlDemand; v++){														
+											Min.push(data[i][v].cost);
+											Min2.push(data[i][v].cost);
+										}
+										// console.log("valeur min :" +Min );
+										Minim = Math.min(...Min);
+										 minTab = parseInt(Minim);
+							
+										var counts = {};
+										for(var s=0; s<Min.length; s++){
+											var num = Min[s];
+											counts[num] = counts[num] ? counts[num] + 1 : 1;
+											
+										}
+										
+										
+										for(var s=0; s<jmlDemand; s++){
+											if(data[i][s].cost === Minim ){
+												if(counts[data[i][s].cost] > 1){
+
+													Min2.forEach(function(elem, index, array) {
+															if (elem === Minim) {indexesOf12.push(index)}
+															return indexesOf12;
+														});
+
+														for(var u in indexesOf12){
+															val = indexesOf12[u];
+															// console.log("repete == true");
+															break;
+
+														}
+														// console.log("indexof "+data[i][s].cost+" : "+indexesOf12);
+
+
+
+
+													// console.log("le nombre d'occurence de "+Min[s]+" est : "+counts[Min[s]]);
+													valy = Min.indexOf(Minim);
+													break;
+
+
+													}
+													else{	
+													// console.log("pas d'occurence de "+Min[s]);														
+													for(var p= Min.length - 1; p >= 0; p--){
+													if(Minim == data[i][p].cost){
+														val = p;
+														// console.log("repete == false");	
+																										
+													}
+													}														
+
+													valy = Min.indexOf(Minim);
+
+													}
+												}
+												
+											}
+
+										// console.log("valeur de valy : "+valy);
+										// console.log("valeur Min :" +minTab);
+
+									}
+									else{
+											Min.splice(valy,1);
+											indexesOf12.splice(0 ,1);
+											var counts = {};
+											for(var s=0; s<Min.length; s++){
+												var num = Min[s];
+												counts[num] = counts[num] ? counts[num] + 1 : 1;
+												
+											}
+											
+											// console.log("valeur Min apres delete de "+Minim+" dans "+valy+" :" +Min);
+											
+											// console.log("valeur min different 0  :" +Min );
+		
+											Minim = Math.min(...Min);
+											minTab = parseInt(Minim);
+											// console.log("la longueur de Min est : "+Min.length);
+											
+											
+											for(var s=0; s<jmlDemand; s++){
+												if(data[i][s].cost === Minim){
+													if(counts[data[i][s].cost] > 1){
+
+													
+														if(indexesOf12.length === 0){
+															Min2.forEach(function(elem, index, array) {
+																	if (elem === Minim) {indexesOf12.push(index)}
+																	return indexesOf12;
+																});
+
+																for(var u in indexesOf12){
+																	val = indexesOf12[u];
+																	// console.log("indexesOf12 (diff 0) "+data[i][s].cost+" : "+indexesOfValue);
+																
+																	break;
+
+																}
+																// console.log("indexof "+data[i][s].cost+" : "+indexesOf12);															
+														}
+														else{
+															
+																for(var u in indexesOf12){
+																	val = indexesOf12[u];
+																	// console.log("indexesOfValue (diff 0) "+data[i][s].cost+" : "+indexesOf12);
+																	break;
+
+																}
+																
+														}
+
+														// console.log("le nombre d'occurence (diff 0) de "+Min[s]+" est : "+counts[Min[s]]);
+														valy = Min.indexOf(Minim);
+															
+
+														break;
+
+
+													}
+													else if(counts[data[i][s].cost] <= 1){		
+													// console.log("pas d'occurence (diff 0) de "+Min[s]);
+													for(var p=0; p<jmlDemand; p++){
+														if(Minim == data[i][p].cost){
+															val = p;
+															// console.log("repete (diff 0) == false");													
+														}
+													}
+
+
+													valy = Min.indexOf(Minim);
+													}
+												}
+												
+												}
+
+										
+										if(Min.length === 0){
+												// val = Min[0];
+												i++;
+												break;
+												
+										}	
+										// console.log("valeur min different zero de valy : "+valy);
+											// console.log("valeur min different zero Min :" +minTab);
+
+																
+																		
+									}
+								
+								// console.log("supply sisa avant de "+i+" : "+(supply[i].sisa));
+								// console.log("demand sisa avant de "+val+" : "+(demand[val].sisa));	
+								if(supply[i].sisa != 0 && demand[val].sisa != 0) {
+									var x = 0;
+									// comparer l'offre restante à la demande
+									// si l'offre est plus petite, inscrivez-la dans le tableau
+									
+									if(supply[i].sisa <= demand[val].sisa) {
+										x = supply[i].sisa;
+										supply[i].sisa -= x;
+										demand[val].sisa -= x;
+										sisa -= x;
+										data[i][val].x = x;
+										data[i][val].temp = x;
+
+										// indiqué dans le tableau
+									$('#x-'+(i+1)+'-'+(val+1)+', #blank-'+(i+1)+'-'+(val+1)).addClass('yellow');
+									$('#x-'+(i+1)+'-'+(val+1)).html(x);
+
+										i++ ;
+									// console.log("supply.sisa <= demande.sisa");
+									}
+									// c'est si l'offre >= la demande
+									else {
+										x = demand[val].sisa;
+										supply[i].sisa -= x;
+										demand[val].sisa -= x;
+										sisa -= x;
+										data[i][val].x = x;
+										data[i][val].temp = x;
+								
+										// indiqué dans le tableau
+									$('#x-'+(i+1)+'-'+(val+1)+', #blank-'+(i+1)+'-'+(val+1)).addClass('yellow');
+									$('#x-'+(i+1)+'-'+(val+1)).html(x);
+								
+									j++;
+
+									// console.log("supply.sisa > demande.sisa");
+									}
+
+								
+									stepRow = i;
+									stepCol = val;
+									breakLoop = true;
+								}
+								// console.log("supply sisa apres de "+i+" : "+(supply[i].sisa));
+								// console.log("demand sisa apres de "+val+" : "+(demand[val].sisa));
+								
+								// si la boucle de rupture est vraie, la boucle s'arrête, puis elle continuera lorsque vous appuyez à nouveau sur suivant
+								if(breakLoop) {
+									break;
+								}
+							}
+
+							// si la boucle de rupture est vraie, la boucle s'arrête, puis elle continuera lorsque vous appuyez à nouveau sur suivant
+							if(breakLoop) {
+								break;
+							}
+						}
+
+						if(sisa == 0) {
+							$('#next').html('Resultat');
+						}
+
+						
+					}
+					// si la variable résiduelle est 0, le MINILI total est calculé
+					else {
+						var totalNwc = 0;
+						var txt = 'Resultat MiniLi = ';
+						for(var i = 0; i < jmlSupply; i++) {
+							for(var j = 0; j < jmlDemand; j++) {
+								if(data[i][j].x != 0) {
+									txt += data[i][j].cost + ' × ' + data[i][j].x;
+									if(i < jmlSupply-1) {
+										txt += ' + ';
+									}
+
+									totalNwc += data[i][j].cost * data[i][j].x;
+								}
+							}
+						}
+						txt += ' = '+totalNwc;
+						$('#next').fadeOut(500);
+						$('#stepping-stone').fadeIn(500);
+						$('#hasil-nwc').html(txt).fadeIn(500);
+					}
+				}
+			});
+
+			$('#stepping-stone').click(function(event) {
+
+
+				event.preventDefault();
+
+// =============================================================================================================================================
+// =============================================================================================================================================
+// ======================================== FIN DE MINILI ========================================================================
+// =============================================================================================================================================
+
+
+
+// =============================================================================================================================================
+// =============================================================================================================================================
+// ======================================== DEBUT DE STPPING STONNE ========================================================================
+// =============================================================================================================================================
+
+var encore = false;
+do{
+
+	console.log("comence ici =================================")
+				var sortData = [];
+				var vy = []; var vx = [];
+				var y = 0, z = 0;
+				var arrVal = [];
+				var Testvy = []; var Testvx = [];
+				// console.log('Donnee avant Stepping stone', data);
+
+				// Recherchez des données qui ont un coût élevé mais qui ne sont pas vides
+				for(var i = 0; i < jmlSupply; i++) {
+					for(var j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x != 0){
+							sortData.push(data[i][j]);
+
+							arrVal.push(data[i][j].cost);
+						}
+					}
+				}
+				var maxVal = Math.max(...arrVal);
+				var i = 0;var j = 0;
+				var IncreJ = []; var TestvalX = [];var valX = [];
+				var IncreI = []; var TestvalY = [];var valY = [];
+				var TestIncreJ = []; var TestvalX = [];
+				var TestIncreI = []; var TestvalY = [];
+
+				for(var j=0; j<jmlDemand; j++){
+					vy.push(0);
+					valY.push(0);
+					TestvalY.push(0);
+				}
+
+				for(var i=0; i<jmlSupply; i++){
+					vx.push(0);
+					valX.push(0);
+					TestvalX.push(0);
+				}
+
+
+			
+
+
+
+
+		do{
+			
+			var trouvY = false;
+			var trouvX = false;
+
+
+				for(var i = 0; i < jmlSupply; i++) {
+					for( j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x != 0){
+							// console.log(" data["+i+"]["+j+"].x = "+data[i][j].x+" et data["+i+"]["+j+"].cost = "+data[i][j].cost);
+							
+							if(data[i][j].cost == maxVal){
+								
+								for(var d=0; d<jmlDemand; d++){
+									if (data[i][d].x != 0) {
+										
+										TestvalY[d]=5;
+										TestvalX[i] = 5;
+										TestIncreI.push(d);
+										// console.log(" TestvalY["+d+"] = "+TestvalY[d]);
+										
+									}
+								}
+								break;
+							}
+						}
+					}
+				}
+
+			var TestVitaX = false;
+			var TestVitaY = false;
+			
+			
+				
+				for(var l = 0; l < arrVal.length; l++) {
+					// console.log(" TestIncreI dans boucle = "+TestIncreI);
+					for(var e in TestvalX){
+						if (TestvalX[e] === 0) {
+							TestVitaX = false;
+							break;
+						}
+						else{
+							TestVitaX = true;
+						}
+					}
+					
+						for(var r in TestIncreI){
+
+							
+
+							var p = TestIncreI[r];
+							// console.log("TestIncreI["+r+"] = "+TestIncreI[r]+", vx["+p+"] = "+vx[p]);
+							if (TestVitaX===false){
+								var repX = 0; 
+								for(var d=0; d<jmlSupply; d++){
+									// console.log(" data["+d+"]["+p+"].x = "+data[d][p].x);
+									if (data[d][p].x != 0) {
+										if(data[d][p].cost != maxVal){
+											
+											TestvalX[d] = 5;
+											
+											TestIncreJ.push(d);
+
+											// console.log(" TestvalX["+d+"] = "+TestvalX[d]);
+
+										}
+									}	
+								}
+								// console.log("repX = "+repX);
+							}
+
+						}
+						TestIncreI.length = 0;
+
+						for(var e in TestvalY){
+							if (TestvalY[e] === 0) {
+								TestVitaY = false;
+								break
+							}
+							else{
+								TestVitaY = true;
+							}
+						}
+						// console.log(" TestIncreJ dans boucle = "+TestIncreJ);
+						for(var s in TestIncreJ){
+
+							var p = TestIncreJ[s];
+							// console.log("TestIncreJ["+s+"] = "+TestIncreJ[s]+", vy["+p+"] = "+vy[p]);
+							
+							if (TestVitaY===false) {
+								var repY = 0; 
+								for(var d=0; d<jmlDemand; d++){
+									if (data[p][d].x != 0) {
+										if(data[p][d].cost != maxVal ){
+										
+											TestvalY[d] = 5;
+											
+											TestIncreI.push(d);
+
+											// console.log(" TestvalY["+d+"] = "+TestvalY[d]);
+
+										}
+									}
+
+								}
+									// console.log("repY = "+repY);
+
+							}
+							
+						}
+						
+
+							TestIncreJ.length = 0;
+							
+					}
+				
+				var degeneY = [];
+				var degeneX = [];
+
+				for(var e=0; e < jmlDemand; e++){
+						if(TestvalY[e] != 0){
+							
+							trouvY = true;
+							degeneY.push(e);
+							console.log("TestvalY["+e+"] = "+TestvalY[e]);
+							break;
+						}else{
+							trouvY === false;
+						}
+
+					}
+
+					for(var e=0; e < jmlSupply; e++){
+						
+						if(TestvalX[e] === 0){
+							degeneX.push(e);
+							trouvX = true;
+							// console.log("TestvalX["+e+"] = "+TestvalX[e]);
+							break;
+						}else{
+							trouvX = false;
+						}
+					}
+					
+					if(trouvY === true && trouvX === true){
+						for(var s in degeneX){
+							var p = degeneX[s];
+							for( var e in degeneY){
+							var f = degeneY[e];
+							
+									if (data[p][f].x === 0) {
+										data[p][f].x = "E";
+										// console.log(" il y a degenere dans i = "+p+", j = "+f);
+										break;
+									}
+								
+								break;
+							}
+						break;
+						}
+						
+					}else{
+						break;
+					}
+
+
+			}while(trouvY === true && trouvX === true);
+
+
+
+// ==========================================================================================================
+			for(var i = 0; i < jmlSupply; i++) {
+				for(var j = 0; j < jmlDemand; j++) {
+					if(data[i][j].x != 0){
+						sortData.push(data[i][j]);
+
+						arrVal.push(data[i][j].cost);
+					}
+				}
+			}
+			var maxVal = Math.max(...arrVal);
+
+
+				for(var i = 0; i < jmlSupply; i++) {
+					for( j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x != 0){
+							console.log(" data["+i+"]["+j+"].x = "+data[i][j].x+" et data["+i+"]["+j+"].cost = "+data[i][j].cost);
+							
+							if(data[i][j].cost === maxVal){
+								
+								for(var d=0; d<jmlDemand; d++){
+									if (data[i][d].x != 0) {
+										y = data[i][d].cost + z ;
+										vy[d] = y;
+										valY[d]=5;
+										IncreI.push(d);
+										// console.log(" data["+i+"]["+d+"].cost + "+vx[i]+" = "+vy[d]);
+										
+									}
+								}
+								break;
+							}
+						}
+					}
+				}
+
+			var vitaX = false;
+			var vitaY = false;
+				for(var l = 0; l < arrVal.length; l++) {
+					// console.log(" IncreI dans boucle = "+IncreI);
+					for(var e in valX){
+						if (valX[e] === 0) {
+							vitaX = false;
+							break;
+						}
+						else{
+							vitaX = true;
+						}
+					}
+					
+						for(var r in IncreI){
+
+							var p = IncreI[r];
+							// console.log("IncreI["+r+"] = "+IncreI[r]+", vx["+p+"] = "+vx[p]);
+							if (vitaX===false){
+								for(var d=0; d<jmlSupply; d++){
+									// console.log(" data["+d+"]["+p+"].x = "+data[d][p].x);
+									if (data[d][p].x != 0) {
+										if(data[d][p].cost != maxVal){
+										
+											vx[d] =  vy[p] - data[d][p].cost ;
+											valX[d]=5;
+											IncreJ.push(d);
+
+											// console.log("  "+vy[p]+" - data["+d+"]["+p+"].cost = "+vx[d] );
+
+										}
+									}	
+								}
+								
+							}								
+							
+						}
+						
+						IncreI.length = 0;
+
+						for(var e in valY){
+							if (valY[e] === 0) {
+								vitaY = false;
+								break
+							}
+							else{
+								vitaY = true;
+							}
+						}
+						// console.log(" IncreJ dans boucle = "+IncreJ);
+						for(var s in IncreJ){
+
+							var p = IncreJ[s];
+							// console.log("IncreJ["+s+"] = "+IncreJ[s]+", vy["+p+"] = "+vy[p]);
+							
+							if (vitaY===false) {
+								for(var d=0; d<jmlDemand; d++){
+									if (data[p][d].x != 0) {
+										if(data[p][d].cost != maxVal ){
+										
+											vy[d] = data[p][d].cost + vx[p] ;
+											valY[d]=5;
+											IncreI.push(d);
+
+											// console.log(" data["+p+"]["+d+"].cost + "+vx[p]+" = "+vy[d]);
+										}
+									}
+									
+								}
+
+							}
+						}
+						
+						IncreJ.length = 0;
+				
+								
+
+						}
+						console.log("==============================");
+						console.log("======= calcule vx, vy =======");
+						console.log("==============================");
+
+						console.log(" vy = "+vy);
+						console.log(" vx = "+vx);
+
+						console.log("================================");
+						console.log("======= vx + C(x,y) - vy =======");
+						console.log("================================");
+
+
+			
+			
+					
+				
+				for( i = 0; i < jmlSupply; i++) {
+					for( j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x === 0){
+							data[i][j].delta = vx[i] + data[i][j].cost - vy[j];
+
+							console.log(vx[i]+" + "+data[i][j].cost+" - "+vy[j]+" = "+data[i][j].delta);
+							
+							
+						}
+					}
+				}
+
+				for( i = 0; i < jmlSupply; i++) {
+					for( j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x === 0){
+							data[i][j].delta = vx[i] + data[i][j].cost - vy[j];
+
+							// console.log(vx[i]+" + data["+i+"]["+j+"].cost - "+vy[j]+" = "+data[i][j].delta);
+							if(data[i][j].delta < 0){
+								// data[i][j].negative = data[i][j].delta ;
+								// console.log("negative data["+i+"]["+j+"].delta = "+data[i][j].delta);
+							}
+							
+						}
+					}
+				}
+
+
+				var valI = 0;
+				var valJ = 0;
+				var vBreak = false;
+
+				var resultFinA = [];
+				var resultFinB = [];
+				var result = [];
+
+				var insertI = [];
+				var insertJ = [];
+
+				var finI = [];
+				var finJ = [];
+
+				var termineI = [];
+				var termineJ = [];
+				
+				var donneeI = [];
+				var donneeJ = [];
+
+				var donnI = 0;
+				var donnj = 0;
+				
+				
+				
+				for(var is = 0; is < jmlSupply; is++) {
+					// console.log("debut 1");
+					
+					for(var js = 0; js < jmlDemand; js++) {
+						
+						var dataI = [];
+						var dataJ = [];	
+						// console.log("debut 2");
+						if(data[is][js].delta < 0){
+							// console.log("debut 3");
+							if(data[is][js].x === 0){
+
+								console.log("===== Calcule Negative ======")
+
+								// data[i][j].x = 5;
+								console.log("data["+is+"]["+js+"].delta = "+data[is][js].delta);
+								// console.log("data["+is+"]["+js+"].cost = "+data[is][js].cost);
+								resultFinA.push(data[is][js].delta);
+
+								termineI.push(is);
+								termineJ.push(js);
+
+								donnI = is;
+								donnj = js;
+
+								valI = is;
+								valJ = js;
+								dataI.push(is);
+								dataJ.push(js);
+								vBreak = true;
+								var valueI = [];
+								var valueJ = [];
+
+								var resultI = [];
+								var resultJ = [];
+
+
+								var valDetermineI = [];
+								var valDetermineJ = [];
+
+
+								var positive = false;
+							
+								var valBreak = false;
+								var datI = 0;
+								var datJ = 0;
+								
+								donneeI.length = 0;
+								donneeJ.length = 0;
+
+							
+
+								valDetermineI.push(4);
+								valDetermineJ.push(4);
+
+
+								for(var i=0; i<jmlSupply; i++){
+									
+									for(var j=0; j<jmlDemand; j++){
+										
+										data[i][j].stop = 0;
+										// console.log("boucle bloque sur data["+i+"]["+j+"].cost = "+data[i][j].cost);
+									}
+								}
+
+								do{
+												for(var ir in donneeI){
+													var i = donneeI[ir];
+													for(var jr in donneeJ){
+														var j = donneeJ[jr];
+														data[i][j].stop = 1;
+														// console.log("boucle bloque sur data["+i+"]["+j+"].cost = "+data[i][j].cost);
+													}
+												}
+
+												for(var ir in donneeI){
+													var i = donneeI[ir];
+													for(var jr in donneeJ){
+														var j = donneeJ[jr];
+														if(data[i][j].stop != 0){
+															// console.log("les bloque data["+i+"]["+j+"].cost = "+data[i][j].cost);
+														}
+															
+													}
+												}
+												
+												// console.log("commence de Do ici ");
+
+												if(valDetermineI.length === 0 && valDetermineJ.length === 0){
+													// rep = jmlSupply-2;
+													dataI.length = 0;
+													dataJ.length = 0;
+													valueI.length = 0;
+													valueJ.length = 0;
+
+													dataI.push(valI);
+													dataJ.push(valJ);
+													// console.log("dataI.length = "+dataI.length+", dataJ.lenght = "+dataJ.length);
+													// console.log("Do : valDetermineI.length = "+valDetermineI.length+" et valDetermineJ.length = "+valDetermineJ.length);
+
+
+													for(var e in dataJ){
+														var s = dataJ[e];
+														var rep = 0;
+														// console.log("premier essaie");
+													
+															for(var g in dataI){
+																var u = dataI[g];
+																// console.log("deuxieme essaie");
+																
+																	dataI.length = 0;
+																	for(var j = 0; j < jmlDemand; j++) {
+																		// console.log("troisieme essaie");
+																		if(data[u][j].x != 0 && j != s && data[u][j].stop === 0){
+																			// data[u][j].x = data[u][j].x - 5;
+																			data[u][j].resultat = -1;
+
+																			valueI.push(u);
+																			valueJ.push(j);
+																			valDetermineJ.push(j);
+																			dataJ.push(j);
+																			datJ = j;
+																			
+																			donneeI.length = 0;
+																			donneeJ.length = 0;
+
+																			resultI.push(u);
+																			resultJ.push(j);
+
+																			donneeI.push(u);
+																			donneeJ.push(j);
+																			// console.log("data["+u+"]["+j+"].cost = "+data[u][j].cost);
+																			positive = false;
+																			valBreak = true;
+																			break;
+																		}
+																	}
+																
+																if(valBreak === true){
+																	break;
+																}
+															}
+														
+
+														if(valBreak === true){
+															break;
+														}
+													}
+												}else{
+
+													
+													for(var e in dataJ){
+														var s = dataJ[e];
+														var rep = 0;
+														// console.log("premier essaie");
+														
+															dataJ.length = 0;
+															for(var g in dataI){
+																var u = dataI[g];
+																// console.log("deuxieme essaie");
+																for(var i = 0; i < jmlSupply; i++) {
+																	// console.log("troisieme essaie");
+
+																	if(data[i][s].x != 0 && i != u && data[i][s].stop === 0){
+																		// data[i][s].x = data[i][s].x - 5;
+																		data[i][s].resultat = -1;
+																		valueJ.push(s);
+																		valueI.push(i);
+																		dataI.push(i);
+																		valDetermineI.push(i);
+																		datI = i;
+
+																		donneeI.length = 0;
+																		donneeJ.length = 0;
+
+																		resultI.push(i);
+																		resultJ.push(s);
+
+																		donneeI.push(i);
+																		donneeJ.push(s);
+																		positive = false;
+																		// console.log("data["+i+"]["+s+"].cost = "+data[i][s].cost);
+																		valBreak = true;
+																		break;
+																	}
+																	
+																	if(valBreak === true){
+																		break;
+																	}
+																}
+
+																if(valBreak === true){
+																	break;
+																}
+															}
+														
+
+														if(valBreak === true){
+															break;
+														}
+													}
+												}
+
+													
+													
+
+													var ii = 0;
+													var jj = 0;
+													
+
+													do{
+														// console.log("Avant Do dataJ.length = "+dataJ.length+" et Positive = "+positive);
+														// console.log("Avant Do dataI.length = "+dataI.length+" et Positive = "+positive);
+
+														if(dataI.length != 0 && positive === false){
+															// console.log("1");
+															valDetermineI.length = 0;
+															// console.log("valueI.length = "+valueI.length+" et valueJ.length = "+valueJ.length);
+															for(var e in valueI){
+																i2 = valueI[e];
+															}
+															var j2 = 0;
+															for(var d in valueJ){
+																j2 = valueJ[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+																
+																	var s = datI;
+
+																	if(valI === i2){
+																		// console.log("test 1");
+																		datI = valI;
+																		datJ = valJ;
+																		valDetermineJ.push(4);
+																		break;
+																	}
+																	else{
+																		// console.log("test 2");
+																		var repetitionData = 0;
+																		for(var j = 0; j < jmlDemand; j++){
+																			// console.log("test 3 data["+s+"]["+j+"].x = "+data[s][j].x+" data["+s+"]["+j+"].stop = "+data[s][j].stop);
+																			// console.log("data["+s+"]["+j+"].stop = "+data[s][j].stop === 0);
+																			if(data[s][j].x != 0 && j != j2 && data[s][j].stop === 0){
+																				// data[s][j].x = data[s][j].x + 5;
+																				data[s][j].resultat = +1;
+
+																				dataJ.push(j);
+
+																				valueI.length = 0;
+																				valueJ.length = 0;
+
+																				valueI.push(s);
+																				valueJ.push(j);
+
+																				valDetermineJ.push(j);
+																				datJ = j;
+																				dataI.length = 0;
+
+																				resultI.push(s);
+																				resultJ.push(j);	
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				donneeI.push(s);
+																				donneeJ.push(j);
+																				// console.log("dataI.length !=0 et Positive = false");
+																				// console.log("data["+s+"]["+j+"].cost = "+data[s][j].cost+" Positive = true");
+																				positive = true;
+																				break;
+																			}
+																			repetitionData ++;
+																			if(repetitionData === (jmlDemand - 1)){
+																				valDetermineJ.length = 0;
+																			}
+
+																		}
+																	}
+																	
+																
+															}
+														}
+
+														
+														
+														if(dataI.length != 0 && positive === true){
+															// console.log("2");
+															var j2 = 0;
+															valDetermineI.length = 0;
+
+															for(var e in valueI){
+																i2 = valueI[e];
+															}
+
+															for(var d in valueJ){
+																j2 = valueJ[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+
+																
+																	var s = datI;
+																	if(valI === i2){
+																		// console.log("testt i2 = "+i2);
+																		datI = valI;
+																		datJ = valJ;
+																		valDetermineJ.push(4);
+																		break;
+																	}
+																	else{
+																		for(var j = 0; j < jmlDemand; j++){
+																			var repetitionData = 0;
+																			if(data[s][j].x != 0 && j != j2 && data[s][j].stop === 0){
+																				// data[s][j].x = data[s][j].x - 5;
+																				data[s][j].resultat = -1;
+
+																				dataJ.push(j);
+
+																				valueI.length = 0;
+																				valueJ.length = 0;
+
+																				valueI.push(s);
+																				valueJ.push(j)
+
+																				datJ = j;
+																				dataI.length = 0;
+																				valDetermineJ.push(j);
+
+																				resultI.push(s);
+																				resultJ.push(j);	
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				donneeI.push(s);
+																				donneeJ.push(j);
+																				
+																				// console.log("dataI.length !=0 et Positive = false");
+																				// console.log("data["+s+"]["+j+"].cost = "+data[s][j].cost);
+																				positive = false;
+																				break;
+																			}
+
+																			repetitionData ++;
+																			if(repetitionData === (jmlDemand - 1)){
+																				valDetermineJ.length = 0;
+																			}
+																		}
+																	}
+																	
+																
+															}
+														}
+														
+
+														if(dataJ.length != 0  && positive === false){
+															var i2 = 0;
+															// console.log("3");
+															valDetermineJ.length = 0;
+
+															for(var e in valueJ){
+																j2 = valueJ[e];
+															}
+															
+															for(var d in valueI){
+																i2 = valueI[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+
+																
+																	var u = datJ;
+																	if(valJ === j2){
+																		datI = valI;
+																		datJ = valJ;
+																		valDetermineI.push(4);
+																		break;
+																	}
+																	else{
+																		for(var i = 0; i < jmlSupply; i++){
+																			var repetitionData = 0;
+																			if(data[i][u].x != 0 && i != i2 && data[i][u].stop === 0){
+																				// data[i][u].x = data[i][u].x + 5;
+																				data[i][u].resultat = +1;
+
+																				dataI.push(i);
+
+																				valueI.length = 0;
+																				valueJ.length = 0;
+
+																				valueI.push(i);
+																				valueJ.push(u);
+																				
+																				datI = i;
+																				dataJ.length = 0;
+																				valDetermineI.push(i);
+
+																				resultI.push(i);
+																				resultJ.push(u);	
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				donneeI.push(i);
+																				donneeJ.push(u);
+
+																				// console.log("dataJ.length !=0 et Positive = false");
+																				// console.log("data["+i+"]["+u+"].cost = "+data[i][u].cost);
+																				positive = true;
+																				break;
+																			}
+																			repetitionData ++;
+																			if(repetitionData === (jmlDemand - 1)){
+																				valDetermineJ.length = 0;
+																			}
+																		}
+																	}
+																	
+																
+															}
+														}
+														
+														if(dataJ.length != 0  && positive === true){
+															var i2 = 0;
+															// console.log("4");
+															valDetermineJ.length = 0;
+
+															for(var e in valueJ){
+																j2 = valueJ[e];
+															}
+
+															for(var d in valueI){
+																i2 = valueI[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+															
+																	var u = datJ;
+																	
+																	if(valJ === j2){
+																		// console.log("test 1");
+																		datI = valI;
+																		datJ = valJ;
+																		valDetermineI.push(4);
+																		break;
+																	}
+																	else{
+																		// console.log("test 2");
+																		for(var i = 0; i < jmlSupply; i++){
+																			// console.log("test 3");
+																			var repetitionData = 0;
+																			if(data[i][u].x != 0 && i != i2 && data[i][u].stop === 0){
+																				// data[i][u].x = data[i][u].x - 5;
+																				data[i][u].resultat = -1;
+
+																				dataI.push(i);
+
+																				valueI.length = 0;
+																				valueJ.length = 0;
+
+																				valueI.push(i);
+																				valueJ.push(u);
+
+																				datI = i;
+																				dataJ.length = 0;
+
+																				valDetermineI.push(i);
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				resultI.push(i);
+																				resultJ.push(u);	
+
+																				donneeI.push(i);
+																				donneeJ.push(u);
+																				// console.log("dataJ.length !=0 et Positive = true");
+																				// console.log("data["+i+"]["+u+"].cost = "+data[i][u].cost);
+																				positive = false;
+																				break;
+																			}
+																			if(repetitionData === (jmlDemand - 1)){
+																				valDetermineJ.length = 0;
+																			}
+																		}
+																	}
+																	
+																
+															}
+															
+														}
+
+														// console.log("Fin Do dataJ.length = "+dataJ.length+" et Positive = "+positive);
+														// console.log("Fin Do dataI.length = "+dataI.length+" et Positive = "+positive);
+
+														// console.log(" valDetermineI.length = "+valDetermineI.length+" et valDetermineJ.length = "+valDetermineJ.length);
+
+														if(valDetermineI.length === 0 && valDetermineJ.length === 0){
+															datI = valI;
+															datJ = valJ;
+														}
+
+														
+															// console.log("datI = "+datI+" valI = "+valI);
+														
+															
+															// console.log("datJ = "+datJ+" valJ = "+valJ);
+
+													}while(valI != datI && valJ != datJ);
+
+													for(var ir in donneeI){
+														var i = donneeI[ir];
+														for(var jr in donneeJ){
+															var j = donneeJ[jr];
+
+															// console.log("boucle bloque sur data["+i+"]["+j+"].cost = "+data[i][j].cost);
+														}
+													}
+
+													if(valDetermineI.length === 0 && valDetermineJ.length === 0){
+														resultI.length = 0;
+														resultJ.length = 0;
+													}else{
+														console.log("==============================");
+														console.log("======= Chemin de parcours ===");
+														console.log("==============================");
+
+					
+														for(var r in resultI){
+															var i = resultI[r];
+															for(var t in resultJ){
+																var j = resultJ[r];
+																console.log("resultat est data["+i+"]["+j+"].cost = "+data[i][j].cost);
+																break
+
+															}
+														}
+
+														
+													}
+
+
+											} while(valDetermineI.length === 0 && valDetermineJ.length === 0);
+
+											var resultMin = [];
+											for(var r in resultI){
+												var i = resultI[r];
+												for(var t in resultJ){
+													var j = resultJ[r];
+													if(data[i][j].resultat < 0){
+														if(data[i][j].x === NaN || data[i][j].x === "E"){
+															resultMin.push("E");
+															insertI.push(i);
+															insertJ.push(j);
+															// console.log("negativ de data["+i+"]["+j+"].x = E");
+
+														}else{
+															resultMin.push(data[i][j].x);
+															insertI.push(i);
+															insertJ.push(j);
+															// console.log("negativ de data["+i+"]["+j+"].x = "+data[i][j].x);
+														}
+														
+													}
+													// console.log("resultat est data["+i+"]["+j+"].cost = "+data[i][j].cost);
+													break;
+
+												}
+											}
+											var minResult = Math.min(...resultMin);
+											for(var t in resultMin){
+												var u = resultMin[t];
+												if(u === "E"){
+													minResult = "E";
+												}
+											}
+										
+											
+											// console.log("le min est "+minResult);
+											resultFinB.push(minResult);
+											// console.log("resultFinB = "+resultFinB);
+
+											for(var r in resultI){
+												var i = resultI[r];
+												for(var t in resultJ){
+													var j = resultJ[r];
+													// console.log("result 0");
+													if(data[i][j].resultat < 0){
+													
+															// console.log("data["+i+"]["+j+"].x = "+data[i][j].x);
+															if( data[i][j].x === "E"){
+																if(data[i][j].x === minResult){
+																	resultMin.push("E");
+																	finI.push(i);
+																	finJ.push(j);
+																	// console.log("finI = "+finI+" et finJ = "+finJ);
+																}
+															}else{
+																if(data[i][j].x === minResult){
+																	resultMin.push(data[i][j].x);
+																	finI.push(i);
+																	finJ.push(j);
+																	// console.log("finI = "+finI+" et finJ = "+finJ);
+																}
+															}
+														
+														
+														
+													}
+													// console.log("resultat est data["+i+"]["+j+"].cost = "+data[i][j].cost);
+													break;
+
+												}
+											}
+
+
+							}
+							
+						}
+						
+					}
+
+					
+
+				}
+				
+
+				console.log("================================");
+				console.log("=========== A x B = C ==========");
+				console.log("================================");
+				
+				for(var e in resultFinA){
+					var finA = resultFinA[e];
+
+					// console.log("test finA");
+					for(var t in resultFinB){
+						
+						var res = 0;
+						var finB = resultFinB[e];
+						// console.log("finB = "+finB);
+						if(finB === "E"){
+							res = "- E";
+							console.log(finA+" X E = "+res);
+							result.push(99);
+						}else{
+							res = finA * finB;
+							console.log(finA+" X "+finB+" = "+res);
+							result.push(res);
+						}
+					
+
+						
+						break;
+
+					}
+				}
+				
+				var resMin = Math.min(...result);
+				// console.log("le min de resultat est "+resMin);
+
+				var resulA = 0;
+				var resulB = 0;
+
+				
+				for(var e in resultFinA){
+					// console.log("rest 0");
+					var fineA = resultFinA[e];
+					for(var t in resultFinB){
+						// console.log("rest 1");
+						var rese = 0;
+						var fineB = resultFinB[e];
+						if(fineB === "E"){
+							// console.log("rest 2.1");
+							rese = "E";
+							if(rese === resMin){
+								// console.log("rest 3.1");
+
+								resulA = fineA;
+								resulB = "E";
+									
+								break;
+							}
+						}else{
+							rese = fineA * fineB;
+							// console.log("rest 2.2");
+							if(rese === resMin){
+							// console.log("rest 3.2");
+
+									resulA = fineA;
+									resulB = fineB;
+
+								break;
+							}
+						}
+						rese = fineA * fineB;
+						
+						
+						
+
+					}
+				
+				}
+
+				// console.log("insertI.length = "+insertI.length+" insertJ.length = "+insertJ.length);
+				// console.log("resultFinA.length = "+resultFinA.length+" resultFinB.length = "+resultFinB.length);
+
+				var vi = 0;
+				var vj = 0;
+				var fin = false;
+				for(var y in termineI){
+					var f = termineI[y];
+
+					for(var o in termineJ){
+						var g = termineJ[y];
+
+						for(var a in finI){
+							var i = finI[y];
+							for(var b in finJ){
+								var j = finJ[y];
+								var reseTest = 0;
+
+								// console.log(" data["+i+"]["+j+"].x = "+data[i][j].x);
+								if(data[i][j].x === "E"){
+									reseTest = "E" ;
+									// console.log("reseTest = "+reseTest+" data["+i+"]["+j+"].x = "+data[i][j].x);
+								}else{
+									reseTest = data[f][g].delta * data[i][j].x ;
+									// console.log("reseTest = "+reseTest+" data["+i+"]["+j+"].x = "+data[i][j].x);
+								}
+								
+										
+									// console.log();
+									// console.log("data["+f+"]["+g+"].delta = "+data[f][g].delta+" resulA = "+resulA+" reseTest = "+reseTest+" resMin = "+resMin+" data["+i+"]["+j+"].x = "+data[i][j].x+" resulB = "+resulB);
+									
+									if(data[f][g].delta === resulA && resMin === reseTest && data[i][j].x === resulB){
+										// console.log("resultat de data["+f+"]["+g+"].delta = "+data[f][g].delta);
+										vi = f;
+										vj = g;
+										fin = true;
+										break;
+									}
+									if(fin === true){
+								break;
+							}
+
+								}
+								if(fin === true){
+								break;
+							}
+								
+						}
+						if(fin === true){
+							break;
+						}
+
+					}
+					if(fin === true){
+							break;
+						}
+				}
+						
+					
+
+		
+		
+				var vBreak2 = false;
+
+				var resultFinA2 = [];
+				var resultFinB2 = [];
+				var result = [];
+
+				var insertI = [];
+				var insertJ = [];
+
+			   
+
+				var is2 = vi;
+				var js2 = vj;
+				
+
+						if(data[is2][js2].delta < 0){
+							if(data[is2][js2].x === 0){
+
+
+								console.log("==============================");
+								console.log("===== Negative on prend ======");
+								console.log("==============================");
+
+						
+								// data[i][j].x = 5;
+								console.log("data["+is2+"]["+js2+"].delta = "+data[is2][js2].delta);
+								console.log("==================");
+								
+								// console.log("data["+is2+"]["+js2+"].cost = "+data[is2][js2].cost);
+								resultFinA2.push(data[is2][js2].delta);
+
+								donneI2 = is2;
+								donneJ2 = js2;
+
+								// data[is2][js2].x = data[is2][js2].x + resulB;
+								// console.log("data["+is2+"]["+js2+"].x + "+resulB+" = "+data[is2][js2].x);
+
+								var dataI2 = [];
+								var dataJ2 = [];	
+
+								valI2 = is2;
+								valJ2 = js2;
+								dataI2.push(is2);
+								dataJ2.push(js2);
+								vBreak2 = true;
+
+								var valueI2 = [];
+								var valueJ2 = [];
+
+								var positive = false;
+
+								var resultI2 = [];
+								var resultJ2 = [];
+								
+
+							
+								var valBreak = false;
+								var datI = 0;
+								var datJ = 0;
+							
+								donneeI.length = 0;
+								donneeJ.length = 0;
+
+								valDetermineI.push(4);
+								valDetermineJ.push(4);
+
+
+
+								for(var i=0; i<jmlSupply; i++){
+									
+									for(var j=0; j<jmlDemand; j++){
+										
+										data[i][j].stop = 0;
+										// console.log("boucle bloque sur data["+i+"]["+j+"].cost = "+data[i][j].cost);
+									}
+								}
+
+								do{
+												for(var ir in donneeI){
+													var i = donneeI[ir];
+													for(var jr in donneeJ){
+														var j = donneeJ[jr];
+														data[i][j].stop = 1;
+														// console.log("boucle bloque sur data["+i+"]["+j+"].cost = "+data[i][j].cost);
+													}
+												}
+
+												for(var ir in donneeI){
+													var i = donneeI[ir];
+													for(var jr in donneeJ){
+														var j = donneeJ[jr];
+														if(data[i][j].stop != 0){
+															// console.log("les bloque data["+i+"]["+j+"].cost = "+data[i][j].cost);
+														}
+															
+													}
+												}
+												
+												// console.log("commence de Do ici ");
+
+												if(valDetermineI.length === 0 && valDetermineJ.length === 0){
+													// rep = jmlSupply-2;
+													dataI2.length = 0;
+													dataJ2.length = 0;
+													valueI2.length = 0;
+													valueJ2.length = 0;
+
+													dataI2.push(valI2);
+													dataJ2.push(valJ2);
+													// console.log("dataI2.length = "+dataI2.length+", dataJ2.lenght = "+dataJ2.length);
+													// console.log("Do : valDetermineI.length = "+valDetermineI.length+" et valDetermineJ.length = "+valDetermineJ.length);
+
+
+													for(var e in dataJ2){
+														var s = dataJ2[e];
+														var rep = 0;
+														// console.log("premier essaie");
+													
+															for(var g in dataI2){
+																var u = dataI2[g];
+																// console.log("deuxieme essaie");
+																
+																	dataI2.length = 0;
+																	for(var j = 0; j < jmlDemand; j++) {
+																		// console.log("troisieme essaie");
+																		if(data[u][j].x != 0 && j != s && data[u][j].stop === 0){
+																			// data[u][j].x = data[u][j].x - resulB;
+																			// console.log("data["+u+"]["+j+"].x - "+resulB+" = "+data[u][j].x);
+																			data[u][j].resultat = -1;
+
+																			valueI2.push(u);
+																			valueJ2.push(j);
+																			valDetermineJ.push(j);
+																			dataJ2.push(j);
+																			datJ = j;
+																			
+																			donneeI.length = 0;
+																			donneeJ.length = 0;
+
+																			resultI2.push(u);
+																			resultJ2.push(j);
+
+																			donneeI.push(u);
+																			donneeJ.push(j);
+																			// console.log("data["+u+"]["+j+"].cost = "+data[u][j].cost);
+																			positive = false;
+																			valBreak = true;
+																			break;
+																		}
+																	}
+																
+																if(valBreak === true){
+																	break;
+																}
+															}
+														
+
+														if(valBreak === true){
+															break;
+														}
+													}
+												}else{
+													for(var e in dataJ2){
+														var s = dataJ2[e];
+														var rep = 0;
+														// console.log("premier essaie");
+														
+															dataJ2.length = 0;
+															for(var g in dataI2){
+																var u = dataI2[g];
+																// console.log("deuxieme essaie");
+																for(var i = 0; i < jmlSupply; i++) {
+																	// console.log("troisieme essaie");
+
+																	if(data[i][s].x != 0 && i != u && data[i][s].stop === 0){
+																		// data[i][s].x = data[i][s].x - resulB;
+																		// console.log("data["+i+"]["+s+"].x - "+resulB+" = "+data[i][s].x);
+
+																		data[i][s].resultat = -1;
+																		valueJ2.push(s);
+																		valueI2.push(i);
+																		dataI2.push(i);
+																		valDetermineI.push(i);
+																		datI = i;
+
+																		donneeI.length = 0;
+																		donneeJ.length = 0;
+
+																		resultI2.push(i);
+																		resultJ2.push(s);
+
+																		donneeI.push(i);
+																		donneeJ.push(s);
+																		positive = false;
+																		// console.log("data["+i+"]["+s+"].cost = "+data[i][s].cost);
+																		valBreak = true;
+																		break;
+																	}
+																	
+																	if(valBreak === true){
+																		break;
+																	}
+																}
+
+																if(valBreak === true){
+																	break;
+																}
+															}
+														
+
+														if(valBreak === true){
+															break;
+														}
+													}
+												}
+
+													
+													
+
+													var ii = 0;
+													var jj = 0;
+
+													do{
+														// console.log("Avant Do dataJ2.length = "+dataJ2.length+" et Positive = "+positive);
+														// console.log("Avant Do dataI2.length = "+dataI2.length+" et Positive = "+positive);
+
+														if(dataI2.length != 0 && positive === false){
+															// console.log("1");
+															valDetermineI.length = 0;
+															var i2 = 0;
+															for(var e in valueI2){
+																i2 = valueI2[e];
+															}
+															var j2 = 0;
+															for(var d in valueJ2){
+																j2 = valueJ2[d];
+																// console.log("i2 = "+i2+" j2 = "+j2+" valI2 = "+valI2);
+																
+																	var s = datI;
+
+																	if(valI2 === i2){
+																		// console.log("test 0");
+																		datI = valI2;
+																		datJ = valJ2;
+																		valDetermineJ.push(4);
+																		break;
+																	}
+																	else{
+																		// console.log("test 1");
+																		for(var j = 0; j < jmlDemand; j++){
+																			if(data[s][j].x != 0 && j != j2 && data[s][j].stop === 0){
+																				// data[s][j].x = data[s][j].x + resulB;
+																				// console.log("data["+s+"]["+j+"].x + "+resulB+" = "+data[s][j].x);
+																				data[s][j].resultat = +1;
+
+																				dataJ2.push(j);
+
+																				valueI2.length = 0;
+																				valueJ2.length = 0;
+
+																				valueI2.push(s);
+																				valueJ2.push(j);
+
+																				valDetermineJ.push(j);
+																				datJ = j;
+																				dataI2.length = 0;
+
+																				resultI2.push(s);
+																				resultJ2.push(j);	
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				donneeI.push(s);
+																				donneeJ.push(j);
+																				// console.log("dataI2.length !=0 et Positive = false");
+																				// console.log("data["+s+"]["+j+"].cost = "+data[s][j].cost+" Positive = true");
+																				positive = true;
+																				break;
+																			}
+
+																		}
+																	}
+																	
+																
+															}
+														}
+
+														
+														
+														if(dataI2.length != 0 && positive === true){
+															// console.log("2");
+															var j2 = 0;
+															valDetermineI.length = 0;
+
+															for(var e in valueI2){
+																i2 = valueI2[e];
+															}
+
+															for(var d in valueJ2){
+																j2 = valueJ2[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+
+																
+																	var s = datI;
+																	if(valI2 === i2){
+																		// console.log("testt i2 = "+i2);
+																		datI = valI2;
+																		datJ = valJ2;
+																		valDetermineJ.push(4);
+																		break;
+																	}
+																	else{
+																		for(var j = 0; j < jmlDemand; j++){
+																			if(data[s][j].x != 0 && j != j2 && data[s][j].stop === 0){
+																				// data[s][j].x = data[s][j].x - resulB;
+																				
+																				// console.log("data["+s+"]["+j+"].x - "+resulB+" = "+data[s][j].x);
+
+																				data[s][j].resultat = -1;
+
+																				dataJ2.push(j);
+
+																				valueI2.length = 0;
+																				valueJ2.length = 0;
+
+																				valueI2.push(s);
+																				valueJ2.push(j)
+
+																				datJ = j;
+																				dataI2.length = 0;
+																				valDetermineJ.push(j);
+
+																				resultI2.push(s);
+																				resultJ2.push(j);	
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				donneeI.push(s);
+																				donneeJ.push(j);
+																				
+																				// console.log("data["+s+"]["+j+"].cost = "+data[s][j].cost);
+																				positive = false;
+																				break;
+																			}
+																		}
+																	}
+																	
+																
+															}
+														}
+														
+
+														if(dataJ2.length != 0  && positive === false){
+															var i2 = 0;
+															// console.log("3");
+															valDetermineJ.length = 0;
+
+															for(var e in valueJ2){
+																j2 = valueJ2[e];
+															}
+															
+															for(var d in valueI2){
+																i2 = valueI2[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+
+																
+																	var u = datJ;
+																	if(valJ2 === j2){
+																		datI = valI2;
+																		datJ = valJ2;
+																		valDetermineI.push(4);
+																		break;
+																	}
+																	else{
+																		for(var i = 0; i < jmlSupply; i++){
+																			if(data[i][u].x != 0 && i != i2 && data[i][u].stop === 0){
+																				// data[i][u].x = data[i][u].x + resulB;
+																				
+																				// console.log("data["+i+"]["+u+"].x + "+resulB+" = "+data[i][u].x);
+																				data[i][u].resultat = +1;
+
+																				dataI2.push(i);
+
+																				valueI2.length = 0;
+																				valueJ2.length = 0;
+
+																				valueI2.push(i);
+																				valueJ2.push(u);
+																				
+																				datI = i;
+																				dataJ2.length = 0;
+																				valDetermineI.push(i);
+
+																				resultI2.push(i);
+																				resultJ2.push(u);	
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				donneeI.push(i);
+																				donneeJ.push(u);
+
+																				// console.log("dataJ2.length !=0 et Positive = false");
+																				// console.log("data["+i+"]["+u+"].cost = "+data[i][u].cost);
+																				positive = true;
+																				break;
+																			}
+																		}
+																	}
+																	
+																
+															}
+														}
+														
+														if(dataJ2.length != 0  && positive === true){
+															var i2 = 0;
+															// console.log("4");
+															valDetermineJ.length = 0;
+															var j2 = 0;
+															for(var e in valueJ2){
+																j2 = valueJ2[e];
+															}
+
+															for(var d in valueI2){
+																i2 = valueI2[d];
+																// console.log("i2 = "+i2+" j2 = "+j2);
+															
+																	var u = datJ;
+																	
+																	if(valJ2 === j2){
+																		// console.log("test der 1");
+																		datI = valI2;
+																		datJ = valJ2;
+																		valDetermineI.push(4);
+																		break;
+																	}
+																	else{
+																		// console.log("test der 2");
+																		for(var i = 0; i < jmlSupply; i++){
+																			if(data[i][u].x != 0 && i != i2 && data[i][u].stop === 0){
+																				// data[i][u].x = data[i][u].x - resulB;
+																				// console.log("data["+i+"]["+u+"].x - "+resulB+" = "+data[i][u].x);
+																				data[i][u].resultat = -1;
+
+																				dataI2.push(i);
+
+																				valueI2.length = 0;
+																				valueJ2.length = 0;
+
+																				valueI2.push(i);
+																				valueJ2.push(u);
+
+																				datI = i;
+																				dataJ2.length = 0;
+
+																				valDetermineI.push(i);
+
+																				donneeI.length = 0;
+																				donneeJ.length = 0;
+
+																				resultI2.push(i);
+																				resultJ2.push(u);	
+
+																				donneeI.push(i);
+																				donneeJ.push(u);
+																				// console.log("dataJ2.length !=0 et Positive = true");
+																				// console.log("data["+i+"]["+u+"].cost = "+data[i][u].cost);
+																				positive = false;
+																				break;
+																			}
+																		}
+																	}
+																	
+																
+															}
+															
+														}
+
+														// console.log("Fin Do dataJ2.length = "+dataJ2.length+" et Positive = "+positive);
+														// console.log("Fin Do dataI2.length = "+dataI2.length+" et Positive = "+positive);
+
+														// console.log(" valDetermineI.length = "+valDetermineI.length+" et valDetermineJ.length = "+valDetermineJ.length);
+
+														if(valDetermineI.length === 0 && valDetermineJ.length === 0){
+															datI = valI2;
+															datJ = valJ2;
+														}
+
+														
+															// console.log("datI = "+datI+" valI2 = "+valI2);
+														
+															
+															// console.log("datJ = "+datJ+" valJ2 = "+valJ2);
+
+													}while(valI2 != datI && valJ2 != datJ);
+
+													for(var ir in donneeI){
+														var i = donneeI[ir];
+														for(var jr in donneeJ){
+															var j = donneeJ[jr];
+
+															// console.log("boucle bloque sur data["+i+"]["+j+"].cost = "+data[i][j].cost);
+														}
+													}
+
+													if(valDetermineI.length === 0 && valDetermineJ.length === 0){
+														resultI2.length = 0;
+														resultJ2.length = 0;
+													}else{
+														var modulo = 0;
+
+														resultI2.push(donneI2);
+														resultJ2.push(donneJ2);
+
+														console.log("==============================");
+														console.log("======= + et - du gain =======");
+														console.log("==============================");
+
+														for(var r in resultI2){
+															var i = resultI2[r];
+															for(var t in resultJ2){
+																var j = resultJ2[r];
+																// console.log("resultat est data["+i+"]["+j+"].cost = "+data[i][j].cost);
+
+																if(modulo % 2===0){
+																	// console.log("ceci est paire");
+																	data[i][j].x = data[i][j].x - resulB;
+																	console.log(data[i][j].x+" - "+resulB+" = "+data[i][j].x);
+																}
+																else{
+																	// console.log("data["+i+"]["+j+"].x = "+data[i][j].x);
+																	if(data[i][j].x === "E"){
+																		// console.log("ceci est impaire");
+																		data[i][j].x = resulB ;
+																		console.log(data[i][j].x+" + "+resulB+" = "+data[i][j].x);
+																	}else{
+																			// console.log("ceci est impaire");
+																			data[i][j].x = data[i][j].x + resulB;
+																			console.log(data[i][j].x+" + "+resulB+" = "+data[i][j].x);
+																		}
+
+																}
+																modulo++;
+																break
+
+															}
+														}
+
+														
+													}
+
+
+											} while(valDetermineI.length === 0 && valDetermineJ.length === 0);
+
+
+							}
+							
+						}
+
+
+			encore = false;
+				for( i = 0; i < jmlSupply; i++) {
+					for( j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x === 0){
+							// data[i][j].delta = vx[i] + data[i][j].cost - vy[j];
+
+							// console.log(vx[i]+" + data["+i+"]["+j+"].cost - "+vy[j]+" = "+data[i][j].delta);
+							if(data[i][j].delta < 0){
+								// console.log("existe encore negativ data["+i+"]["+j+"].delta = "+data[i][j].delta);
+								encore = true;
+							}
+							
+						}
+					}
+				}
+
+				console.log("==============================");
+				console.log("======= vx + C(x,y) - vy =====");
+				console.log("==============================");
+
+				for( i = 0; i < jmlSupply; i++) {
+					for( j = 0; j < jmlDemand; j++) {
+						if(data[i][j].x === 0){
+							// data[i][j].delta = vx[i] + data[i][j].cost - vy[j];
+
+							console.log(vx[i]+" + "+data[i][j].cost+" - "+vy[j]+" = "+data[i][j].delta);
+							
+							
+						}
+					}
+				}
+						
+					
+
+}while(encore === true);
+
+console.log("Fin de travaux ..........")
+
+
+// =============================================================================================================================================
+// =============================================================================================================================================
+// ======================================== FIN DE STPPING STONNE ========================================================================
+// =============================================================================================================================================
+
+
+
+
+
+				// Trier par coût
+				sortData.sort(function(a, b) {
+					return b.cost-a.cost;
+				});
+
+				// console.log('candidat stepping stone', sortData);
+
+				var compareData = [];
+				var indexTerpilih;
+				// Trouvez un coin où moins ce n'est pas un moins
+				for(var i = 0; i < sortData.length; i++) {
+					compareData = [];
+					var row = sortData[i].asal - 1;
+					var col = sortData[i].tujuan - 1;
+
+					if(typeof data[row-1] != 'undefined' && typeof data[row-1][col-1] != 'undefined' && data[row-1][col-1].x - sortData[i].x >= 0) {
+						compareData.push([
+							data[row-1][col-1], 'kiri-atas' // en haut à gauche
+						]);
+					}
+
+					if(typeof data[row-1] != 'undefined' && typeof data[row-1][col+1] != 'undefined' && data[row-1][col+1].x - sortData[i].x >= 0) {
+						compareData.push([
+							data[row-1][col+1], 'kanan-atas' // en haut à droite
+						]);
+					}
+
+					if(typeof data[row+1] != 'undefined' && typeof data[row+1][col-1] != 'undefined' && data[row+1][col-1].x - sortData[i].x >= 0) {
+						compareData.push([
+							data[row+1][col-1], 'kiri-bawah' // en  bas à gauche
+						]);
+					}
+
+					if(typeof data[row+1] != 'undefined' && typeof data[row+1][col+1] != 'undefined' && data[row+1][col+1].x - sortData[i].x >= 0) {
+						compareData.push([
+							data[row+1][col+1], 'kanan-bawah' // en bas à droite
+						]);
+					}
+
+					if(compareData.length != 0) {
+						indexTerpilih = i;
+						break;
+					}
+				}
+
+				// Triez les coins en fonction du coût le plus élevé
+				compareData.sort(function(a, b) {
+					return b[0].cost-a[0].cost;
+				});
+
+				// console.log('donnee selectionnee', sortData[indexTerpilih]);
+				// console.log('candidat de Minili', compareData);
+
+				// changer la valeur
+				var valueTerpilih = sortData[indexTerpilih].x;
+				var rowTerpilih = sortData[indexTerpilih].asal;
+				var colTerpilih = sortData[indexTerpilih].tujuan;
+
+				// signer la colonne de référence
+				$('.x, .blank').removeClass('yellow');
+				$('#x-'+(rowTerpilih)+'-'+(colTerpilih)+', #blank-'+(rowTerpilih)+'-'+(colTerpilih)).addClass('yellow');
+
+				var row = sortData[indexTerpilih].asal - 1;
+				var col = sortData[indexTerpilih].tujuan - 1;
+				// S'il y a un coin approprié, faites une pierre de marche
+
+				// console.log("compareData est : "+compareData);
+
+				if(typeof compareData[0] != 'undefined') {
+					// switch(compareData[0][1]) {
+					// 	case 'kiri-atas' : // en haut à gauche
+					// 		// colonne de référence
+					// 		data[row][col].x -= valueTerpilih;  // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row][col].temp+'</span> '+data[row][col].x);
+					// 		data[row][col].temp = data[row][col].x;
+
+					// 		// en haut à gauche
+					// 		data[row-1][col-1].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih-1)+'-'+(colTerpilih-1)).html('<span class="line-through">'+data[row-1][col-1].temp+'</span> '+data[row-1][col-1].x);
+					// 		data[row-1][col-1].temp = data[row-1][col-1].x;
+							
+					// 		// dessus
+					// 		data[row-1][col].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih-1)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row-1][col].temp+'</span> '+data[row-1][col].x);
+					// 		data[row-1][col].temp = data[row-1][col].x; 
+							
+					// 		// côté gauche
+					// 		data[row][col-1].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih-1)).html('<span class="line-through">'+data[row][col-1].temp+'</span> '+data[row][col-1].x);
+					// 		data[row][col-1].temp = data[row][col-1].x;
+							
+					// 		break;
+					// 	case 'kanan-atas' : // en haut à doite
+					// 		// colonne de référence
+					// 		data[row][col].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row][col].temp+'</span> '+data[row][col].x);
+					// 		data[row][col].temp = data[row][col].x;
+
+					// 		// en haut à droite
+					// 		data[row-1][col+1].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih-1)+'-'+(colTerpilih+1)).html('<span class="line-through">'+data[row-1][col+1].temp+'</span> '+data[row-1][col+1].x);
+					// 		data[row-1][col+1].temp = data[row-1][col+1].x;							
+
+					// 		// dessus
+					// 		data[row-1][col].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih-1)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row-1][col].temp+'</span> '+data[row-1][col].x);
+					// 		data[row-1][col].temp = data[row-1][col].x;
+							
+					// 		// sur le côté droit
+					// 		data[row][col+1].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih+1)).html('<span class="line-through">'+data[row][col+1].temp+'</span> '+data[row][col+1].x);
+					// 		data[row][col+1].temp = data[row][col+1].x;
+
+					// 		break;
+					// 	case 'kiri-bawah' : // en bas à gauche
+					// 		// colonne de référence
+					// 		data[row][col].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row][col].temp+'</span> '+data[row][col].x);
+					// 		data[row][col].temp = data[row][col].x;
+
+					// 		// en bas à gauche
+					// 		data[row+1][col-1].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih+1)+'-'+(colTerpilih-1)).html('<span class="line-through">'+data[row+1][col-1].temp+'</span> '+data[row+1][col-1].x);
+					// 		data[row+1][col-1].temp = data[row+1][col-1].x;
+							
+					// 		// dessous
+					// 		data[row+1][col].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih+1)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row+1][col].temp+'</span> '+data[row+1][col].x);
+					// 		data[row+1][col].temp = data[row+1][col].x;
+							
+					// 		// côté gauche
+					// 		data[row][col-1].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih-1)).html('<span class="line-through">'+data[row][col-1].temp+'</span> '+data[row][col-1].x);
+					// 		data[row][col-1].temp = data[row][col-1].x;
+
+					// 		break;
+					// 	case 'kanan-bawah' : // en haut à gauche
+					// 		// colonne de référence
+					// 		data[row][col].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row][col].temp+'</span> '+data[row][col].x);
+					// 		data[row][col].temp = data[row][col].x;
+
+					// 		// en bas à droite
+					// 		data[row+1][col+1].x -= valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih+1)+'-'+(colTerpilih+1)).html('<span class="line-through">'+data[row+1][col+1].temp+'</span> '+data[row+1][col+1].x);
+					// 		data[row+1][col+1].temp = data[row+1][col+1].x;
+							
+					// 		// dessous
+					// 		data[row+1][col].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih+1)+'-'+(colTerpilih)).html('<span class="line-through">'+data[row+1][col].temp+'</span> '+data[row+1][col].x);
+					// 		data[row+1][col].temp = data[row+1][col].x;
+							
+					// 		// sur le côté droit
+					// 		data[row][col+1].x += valueTerpilih; // value choisie
+					// 		$('#x-'+(rowTerpilih)+'-'+(colTerpilih+1)).html('<span class="line-through">'+data[row][col+1].temp+'</span> '+data[row][col+1].x);
+					// 		data[row][col+1].temp = data[row][col+1].x;
+
+					// 		break;
+					// }
+					// console.log('donnee apres stepping stone', data);
+				}
+				else {
+					$('#stepping-stone').fadeOut(500);
+				}
+
+				// compter la valeur du Steping Stone
+
+
+				// var totalSs = 0;
+				// var txt = 'Resultat Stepping Stone = ';
+				// for(var i = 0; i < jmlSupply; i++) {
+				// 	for(var j = 0; j < jmlDemand; j++) {
+				// 		if(data[i][j].x != 0) {
+				// 			txt += data[i][j].cost + ' × ' + data[i][j].x;
+				// 			if(i < jmlSupply-1) {
+				// 				txt += ' + ';
+				// 			}
+
+				// 			totalSs += data[i][j].cost * data[i][j].x;
+				// 		}
+				// 	}
+				// }
+				// txt += ' = '+totalSs;
+				// var hasil = $('#hasil-ss').clone();
+				// hasil.html(txt);
+				// $('.container').append(hasil);
+				// hasil.fadeIn(500);
+			});
+		});
+	</script>
+</body>
+</html>
